@@ -89,6 +89,7 @@
 
         await repo.Customer.Seed(auth.User);
         await repo.InvoiceTerms.Seed(auth.User);
+        await repo.Save();
 
         customers = await repo.Customer.GetAllMine(auth.User);
         foreach (CustomerDTO c in customers)
