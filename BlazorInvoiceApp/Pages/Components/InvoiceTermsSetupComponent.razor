@@ -1,0 +1,136 @@
+﻿@inject IRepositoryCollection repo
+@inject AuthenticationStateProvider authstate
+
+<h3>Invoice Terms</h3>
+
+<AuthorizeView>
+    <Authorized>
+        <div class="text-danger">@Message</div>
+        <RadzenButton ButtonStyle="ButtonStyle.Success" Icon="add_circle_outline" class="mt-2 mb-4" Text="Add New Terms Type" Click="@InsertRow" Disabled=@(termsToInsert != null || termsToUpdate != null) />
+        <RadzenDataGrid @ref="termsGrid" AllowAlternatingRows="false" AllowSorting="true" EditMode="DataGridEditMode.Single"
+                        Data="@terms" TItem="InvoiceTermsDTO" RowUpdate="@OnUpdateRow" RowCreate="@OnCreateRow" Sort="@Reset" ColumnWidth="200px">
+            <Columns>
+                <RadzenDataGridColumn TItem="InvoiceTermsDTO" Property="Name" Title="Name" Width="200px">
+                    <EditTemplate Context="terms">
+                        <RadzenTextBox @bind-Value="terms.Name" Style="width:100%; display: block" Name="Name" />
+                        <RadzenRequiredValidator Text="Name is Required" Component="Name" Popup="true" />
+                    </EditTemplate>
+                </RadzenDataGridColumn>
+
+                <RadzenDataGridColumn TItem="InvoiceTermsDTO" Context="terms" Filterable="false" Sortable="false" TextAlign="TextAlign.Right" Width="150px">
+                    <Template Context="terms">
+                        <RadzenButton Icon="edit" ButtonStyle="ButtonStyle.Light" Variant="Variant.Flat" Size="ButtonSize.Medium" Click="@(args => EditRow(terms))" @onclick:stopPropagation="true">
+                        </RadzenButton>
+                        <RadzenButton ButtonStyle="ButtonStyle.Danger" Icon="delete" Variant="Variant.Flat" Shade="Shade.Lighter" Size="ButtonSize.Medium" class="my-1 ms-1" Click="@(args => DeleteRow(terms))" @onclick:stopPropagation="true">
+                        </RadzenButton>
+                    </Template>
+                    <EditTemplate Context="terms">
+                        <RadzenButton Icon="check" ButtonStyle="ButtonStyle.Success" Variant="Variant.Flat" Size="ButtonSize.Medium" Click="@((args) => SaveRow(terms))">
+                        </RadzenButton>
+                        <RadzenButton Icon="close" ButtonStyle="ButtonStyle.Light" Variant="Variant.Flat" Size="ButtonSize.Medium" class="my-1 ms-1" Click="@((args) => CancelEdit(terms))">
+                        </RadzenButton>
+                        <RadzenButton ButtonStyle="ButtonStyle.Danger" Icon="delete" Variant="Variant.Flat" Shade="Shade.Lighter" Size="ButtonSize.Medium" class="my-1 ms-1" Click="@(args => DeleteRow(terms))">
+                        </RadzenButton>
+                    </EditTemplate>
+                </RadzenDataGridColumn>
+            </Columns>
+        </RadzenDataGrid>
+    </Authorized>
+</AuthorizeView>
+
+
+@code {
+    List<InvoiceTermsDTO> terms = new();
+    RadzenDataGrid<InvoiceTermsDTO>? termsGrid;
+
+
+    InvoiceTermsDTO? termsToInsert;
+    InvoiceTermsDTO? termsToUpdate;
+
+    string Message = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationState auth = await authstate.GetAuthenticationStateAsync();
+        await repo.InvoiceTerms.Seed(auth.User);
+        await repo.Save();
+        terms = await repo.InvoiceTerms.GetAllMine(auth.User);
+    }
+
+    void Reset()
+    {
+        Message = "";
+        termsToInsert = null;
+        termsToUpdate = null;
+    }
+
+    async Task EditRow(InvoiceTermsDTO terms)
+    {
+        Message = "";
+        termsToUpdate = terms;
+        await termsGrid!.EditRow(terms);
+    }
+
+    async Task OnUpdateRow(InvoiceTermsDTO terms)
+    {
+        AuthenticationState auth = await authstate.GetAuthenticationStateAsync();
+        Reset();
+        await repo.InvoiceTerms.UpdateMine(auth.User, terms);
+        await repo.Save();
+    }
+
+    async Task SaveRow(InvoiceTermsDTO terms)
+    {
+        await termsGrid!.UpdateRow(terms);
+    }
+
+    void CancelEdit(InvoiceTermsDTO terms)
+    {
+        Reset();
+        termsGrid!.CancelEditRow(terms);
+    }
+
+    async Task DeleteRow(InvoiceTermsDTO terms)
+    {
+        AuthenticationState auth = await authstate.GetAuthenticationStateAsync();
+        Reset();
+        try
+        {
+            bool found = await repo.InvoiceTerms.DeleteMine(auth.User, terms.Id);
+            if (found)
+            {
+                await repo.Save();
+                await repo.InvoiceTerms.Seed(auth.User);
+                await repo.Save();
+                this.terms = await repo.InvoiceTerms.GetAllMine(auth.User);
+                await termsGrid!.Reload();
+            }
+            else
+            {
+                termsGrid!.CancelEditRow(terms);
+                await termsGrid!.Reload();
+            }
+        }
+        catch (RepositoryDeleteException)
+        {
+            // can't delete because would break integrity!
+            Message = "Can't delete selected Invoice Terms, it is being used by an invoice.";
+        }
+    }
+
+    async Task InsertRow()
+    {
+        Message = "";
+        termsToInsert = new InvoiceTermsDTO();
+        await termsGrid!.InsertRow(termsToInsert);
+    }
+
+    async Task OnCreateRow(InvoiceTermsDTO terms)
+    {
+        AuthenticationState auth = await authstate.GetAuthenticationStateAsync();
+        terms.Id = await repo.InvoiceTerms.AddMine(auth.User, terms);
+        await repo.Save();
+        this.terms = await repo.InvoiceTerms.GetAllMine(auth.User);
+        termsToInsert = null;
+    }
+}

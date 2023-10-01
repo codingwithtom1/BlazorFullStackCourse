@@ -1,0 +1,21 @@
+﻿@page "/"
+
+@inject IRepositoryCollection repo
+@inject AuthenticationStateProvider authstate
+
+<PageTitle>My Page</PageTitle>
+
+<h1>Invoices</h1>
+<PageTitle>Invoices</PageTitle>
+<AuthorizeView>
+    <Authorized>
+        <InvoicesComponent/>
+    </Authorized>
+    <NotAuthorized>
+        Please log in to see your invoices.
+    </NotAuthorized>
+</AuthorizeView>
+
+@code {
+   
+}

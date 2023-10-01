@@ -1,0 +1,128 @@
+﻿@inject IRepositoryCollection repo
+@inject NavigationManager nav
+@inject AuthenticationStateProvider authstate
+<div class="text-danger">@Message</div>
+<RadzenDropDown @bind-Value=@dropdownvalue Data=@customers TextProperty="Name" ValueProperty="Id" Style="width: 100%; max-width: 400px;" />
+
+
+<RadzenButton ButtonStyle="ButtonStyle.Success" Icon="add_circle_outline" class="mt-2 mb-4" Text="Add New Invoice" Click="@AddInvoice" />
+<RadzenDataGrid @ref="invoicesGrid" AllowAlternatingRows="false" AllowSorting="true" AllowFiltering="true" FilterMode="FilterMode.Simple" FilterCaseSensitivity="FilterCaseSensitivity.CaseInsensitive"
+                Data="@invoices" TItem="InvoiceDTO" ColumnWidth="200px">
+    <Columns>
+
+
+        <RadzenDataGridColumn TItem="InvoiceDTO" Property="InvoiceNumber" Title="Invoice Number" Filterable="false" Width="120px" />
+        <RadzenDataGridColumn TItem="InvoiceDTO" FormatString="{0:MM/dd/yyyy}" Property="CreateDate" Title="Create Date" Width="120px" />
+        <RadzenDataGridColumn TItem="InvoiceDTO" Property="Description" Title="Description" Width="120px" />
+        <RadzenDataGridColumn TItem="InvoiceDTO" Property="CustomerName" Title="Customer Name" Type="typeof(IEnumerable<string>)" Width=" 120px"
+                              FilterValue="@selectedCustomerNames" FilterOperator="FilterOperator.Contains" LogicalFilterOperator="LogicalFilterOperator.Or">
+            <FilterTemplate>
+                <RadzenDropDown @bind-Value=@selectedCustomerNames Style="width:100%;"
+                                Change=@OnSelectedCustomerNameChange Data="@customernames" AllowClear="true" Multiple="true" />
+            </FilterTemplate>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="InvoiceDTO" Property="InvoiceTermsName" Title="Invoice Terms" Type="typeof(IEnumerable<string>)" Width="120px"
+                              FilterValue="@selectedInvoiceTerms" FilterOperator="FilterOperator.Contains" LogicalFilterOperator="LogicalFilterOperator.Or">
+            <FilterTemplate>
+                <RadzenDropDown @bind-Value=@selectedInvoiceTerms Style="width:100%;"
+                                Change=@OnSelectedInvoiceTermsChange Data="@invoicetermsvalues" AllowClear="true" Multiple="true" />
+            </FilterTemplate>
+        </RadzenDataGridColumn>
+
+
+
+
+        <RadzenDataGridColumn TItem="InvoiceDTO" Property="InvoiceTotal" Title="Invoice Total" Filterable="false" Width="120px">
+            <Template Context="invoice">
+                @string.Format("{0:c}",invoice.InvoiceTotal*(1+invoice.TaxRate/100))
+            </Template>
+        </RadzenDataGridColumn>
+
+
+        <RadzenDataGridColumn TItem="InvoiceDTO" Property="InvoiceTotal" Title="DUE" Filterable="false" Width="120px">
+            <Template Context="invoice">
+                @string.Format("{0:c}",invoice.InvoiceTotal*(1+invoice.TaxRate/100) - invoice.Paid - invoice.Credit)
+            </Template>
+        </RadzenDataGridColumn>
+        <RadzenDataGridColumn TItem="InvoiceDTO" Property="Id" Title="" Width="120px" Filterable="false">
+            <Template Context="invoice">
+                <RadzenButton ButtonStyle="ButtonStyle.Info" Variant="Variant.Flat" Shade="Shade.Lighter" Icon="description" class="m-1" Click=@(() => OpenInvoice(invoice.Id)) Text="Edit" />
+            </Template>
+        </RadzenDataGridColumn>
+    </Columns>
+</RadzenDataGrid>
+
+
+@code {
+
+    List<InvoiceDTO> invoices = new();
+    List<CustomerDTO> customers = new();
+    List<InvoiceTermsDTO> invoiceterms = new();
+    RadzenDataGrid<InvoiceDTO>? invoicesGrid;
+
+    string Message = string.Empty;
+    string dropdownvalue = string.Empty;
+
+    IEnumerable<string>? selectedCustomerNames;
+    List<string> customernames = new List<string>();
+    void OnSelectedCustomerNameChange(object value)
+    {
+        if (selectedCustomerNames != null && !selectedCustomerNames.Any())
+        {
+            selectedCustomerNames = null;
+        }
+    }
+
+    IEnumerable<string>? selectedInvoiceTerms;
+    List<string> invoicetermsvalues = new List<string>();
+    void OnSelectedInvoiceTermsChange(object value)
+    {
+        if (selectedInvoiceTerms != null && !selectedInvoiceTerms.Any())
+        {
+            selectedInvoiceTerms = null;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        AuthenticationState auth = await authstate.GetAuthenticationStateAsync();
+
+        customers = await repo.Customer.GetAllMine(auth.User);
+        foreach (CustomerDTO c in customers)
+            customernames.Add(c.Name!);
+
+        invoiceterms = await repo.InvoiceTerms.GetAllMine(auth.User);
+        foreach (InvoiceTermsDTO i in invoiceterms)
+            invoicetermsvalues.Add(i.Name);
+
+        if (customers.Count > 0)
+            dropdownvalue = customers[0].Id;
+        invoices = await repo.Invoice.GetAllMineFlat(auth.User);
+
+    }
+
+
+    public void OpenInvoice(string Id)
+    {
+        nav.NavigateTo("/invoicedetail/" + Id);
+    }
+
+    public async Task AddInvoice()
+    {
+        AuthenticationState auth = await authstate.GetAuthenticationStateAsync();
+        // create an invoice and redirect to it
+        List<InvoiceTermsDTO> terms = await repo.InvoiceTerms.GetAllMine(auth.User);
+        string id = await repo.Invoice.AddMine(auth.User, new InvoiceDTO
+            {
+                Description = "New Invoice",
+                CreateDate = DateTime.Now,
+                Credit = 0,
+                Paid = 0,
+                CustomerId = dropdownvalue,
+                TaxRate = 0,
+                InvoiceTermsId = terms[0].Id
+            });
+        await repo.Save();
+        nav.NavigateTo("/invoicedetail/" + id);
+    }
+}
